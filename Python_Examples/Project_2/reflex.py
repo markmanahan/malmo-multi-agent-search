@@ -1,6 +1,15 @@
 # Created by Minbiao Han and Roman Sharykin
 # AI fall 2018
 
+# PA2- Ben Hughes (bch3jh) and Mark Manahan (mmm5ja)
+
+'''
+Reference materials:
+-- https://github.com/filR/edX-CS188.1x-Artificial-Intelligence/blob/master/Project%202%20-%20Multi-Agent%20Pacman/multiAgents.py
+-- https://github.com/takeitallsource/berkeley-cs-188/blob/master/project-2/multiagent/multiAgents.py
+-- https://github.com/kevjames3/CS188.1x-Project2/blob/master/multiAgents.py
+'''
+
 from __future__ import print_function
 from __future__ import division
 
@@ -18,7 +27,7 @@ import re
 import uuid
 from collections import namedtuple
 from operator import add
-from random import *
+from random import choice, randint
 import numpy as np
 
 
@@ -26,113 +35,86 @@ import numpy as np
 # Inputs: pos - tuple (position of player), enemy_pos - tuple, food - array
 # Output: your evaluation score
 def evalfuncReflex(pos, enemy_pos, dest_blocks):
-    # make a copy of destination blocks
-    # temp_food_list = list(dest_blocks)
 
-    # a list of distances to pieces of food
-    food_distances = []
-
-    # for some_dest in dest_blocks:  # for every destination block
-    #    if some_dest in temp_food_list:  # if the destination block is "marked" as having food
-    #        food_distances.append(manhattan_distance(pos, some_dest))  # append the distance to that food to the list
-    #        del temp_food_list[some_dest]  # "un-mark" the block to account for the food being eaten
-
-    # TO-DO: evaluate scores; depth 1, best possible action for the given state; play around with constants
-
-    #  find the closest piece of food
-    # closest_food = min(manhattan_distance(pos, dest_blocks[i]) for i in range(len(dest_blocks)))
-    for i in range(len(dest_blocks)):
-        food_distances.append(manhattan_distance(pos, dest_blocks[i]))
-
-    closest_food = min(food_distances)
+    closest_food = min(manhattan_distance(pos, some_food) for some_food in dest_blocks)
 
     # compute score for enemy distance
-    enemy_score = -2 / (manhattan_distance(pos, enemy_pos) + 1)
+    enemy_dist = manhattan_distance(pos, enemy_pos)
+
+    #Instead of a function, we 'hardcode' certain weights. If enemy is more than 3 blocks away, ignore him.
+    if enemy_dist == 2:
+        enemy_score = -1
+    elif enemy_dist == 1 or enemy_dist == 0:
+        enemy_score = -10
+    elif enemy_dist == 3:
+        enemy_score = -0.5
+    else:
+        enemy_score = 0
 
     # compute score for closest food
-    closest_food_score = 0.5 / (closest_food + 1)
+    closest_food_score = 1 / (closest_food + 1)
+    #idea: The less food here is, the more valuable the food around you is and vis-versa, but NOT
+    #      enough to put the agent in danger
+    remaining_food_score = 1 / len(dest_blocks)
 
-    # returns a combined score comprised of closest food score, enemy score, and amount of food left
-    return closest_food_score + enemy_score + len(dest_blocks)
+
+    return closest_food_score + enemy_score + remaining_food_score
 
 
 ### Implement a way for the agent to decide which way to move
 # Inputs: pos - tuple (position of player), world_state, enemy_pos - tuple, food - array
 # Output: direction in which to move (can be a string, int, or whatever way you want to implement it)
 def chooseAction(pos, wstate, dest_blocks, enemy_pos):
-    # get a list legal moves
+
+    # get a list of legal moves
     legal_moves = legalMoves(wstate)
 
-    # retrieve current coordinates and form coordinates for directions, given that there is not a wall in the direction
-    pos_x, pos_y = pos
-    if "forward" in legal_moves:
-        up = (pos_x, pos_y + 1)
-    if "back" in legal_moves:
-        down = (pos_x, pos_y - 1)
-    if "left" in legal_moves:
-        left = (pos_x - 1, pos_y)
-    if "right" in legal_moves:
-        right = (pos_x + 1, pos_y)
 
-    # a list for the computed scores for directional moves
-    scores = [0, 0, 0, 0]  # up score, down score, left score, right score
 
-    # boolean variables to remember directional moves that were checked
-    bool_up = False
-    bool_down = False
-    bool_left = False
-    bool_right = False
+    # here we must account for our location begin (x.5, y.5), so we subtract by -.5 and
+    # add +-1 to the appropriate coordinate.
+    scores = []
+    for legal_move in legal_moves:
+        if legal_move == "left":
+            scores.append(evalfuncReflex((pos[0]+0.5, pos[1]-0.5), enemy_pos, dest_blocks))
+        elif legal_move == "right":
+            scores.append(evalfuncReflex((pos[0]-1.5, pos[1]-0.5),enemy_pos, dest_blocks))
+        elif legal_move == "forward":
+            scores.append(evalfuncReflex((pos[0]-0.5, pos[1]+0.5),enemy_pos, dest_blocks))
+        else: #backward
+            scores.append(evalfuncReflex((pos[0]-0.5, pos[1]-1.5), enemy_pos, dest_blocks))
 
-    for legal_move in legal_moves:  # for every legal move (until we have looked at all directions)
-        if legal_move == "forward" and not bool_up:  # check the world state above
-            scores[0] = (evalfuncReflex(up, dest_blocks, enemy_pos))
-            bool_up = True
-        elif legal_move == "back" and not bool_down:  # below
-            scores[1] = (evalfuncReflex(down, dest_blocks, enemy_pos))
-            bool_down = True
-        elif legal_move == "left" and not bool_left:  # to the left
-            scores[2] = (evalfuncReflex(left, dest_blocks, enemy_pos))
-            bool_left = True
-        elif legal_move == "right" and not bool_right:  # to the right
-            scores[3] = (evalfuncReflex(right, dest_blocks, enemy_pos))
-            bool_right = True
-        if bool_up and bool_down and bool_left and bool_right:  # if we have checked every direction already
-            break  # stop checking other legal moves
 
-    # find the optimal score, the highest score in the list
+    # optimal score is the highest score in the list
     best_score = max(scores)
 
-    # optimal moves are those moves with scores that match the highest score
+    # optimal moves are those moves with scores that match the highest score in the list of scores
     best_moves = [index for index in range(len(scores)) if scores[index] == best_score]
-
     # choose some best move
     some_best_move = random.choice(best_moves)
 
-    # returns the chosen best move and deletes the corresponding food; don't need to account for deleeting dest-blocks/food at all
-    if some_best_move == 0:  # up
-        return "forward"
-    elif some_best_move == 1:  # down
-        return "back"
-    elif some_best_move == 2:  # left
-        return "left"
-    elif some_best_move == 3:  # right
-        return "right"
+    # returns the chosen best move
+    return legal_moves[some_best_move]
 
 
 ### Move the agent here
 # Output: void (should just call the correct movement function)
 def reflexAgentMove(agent, pos, wstate, dest_blocks, enemy_pos):
+    ### YOUR CODE HERE ###
     # determine what action should be taken based on the current world state
     action = chooseAction(pos, wstate, dest_blocks, enemy_pos)
 
-    if action == "forward":
-        moveStraight(agent)
-    elif action == "back":
-        moveBack(agent)
+    if action == "right":
+        moveRight(agent)
+
     elif action == "left":
         moveLeft(agent)
-    elif action == "right":
-        moveRight(agent)
+
+    elif action == "forward":
+        moveStraight(agent)
+
+    elif action == "back":
+        moveBack(agent)
 
     return
 
